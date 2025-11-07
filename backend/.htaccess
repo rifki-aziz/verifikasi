@@ -1,0 +1,79 @@
+# --- Enable URL rewriting ---
+RewriteEngine On
+
+# ganti kalau app kamu ada di subfolder, mis. /backend/
+RewriteBase /backend/
+Options -MultiViews
+
+# --- Redirect HTTP -> HTTPS (PROD only, skip di localhost) ---
+RewriteCond %{HTTPS} off
+RewriteCond %{HTTP_HOST} !^(localhost|127\.0\.0\.1)(:\d+)?$ [NC]
+RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+# --- Security & CORS ---
+<IfModule mod_headers.c>
+  # Security dasar
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set X-Frame-Options "DENY"
+  Header always set Referrer-Policy "strict-origin-when-cross-origin"
+
+  # === CORS whitelist: PROD domain + localhost:5173 khusus dev ===
+  SetEnvIfNoCase Origin "^https?://(www\.)?verifikasi\.surat\.lirboyo\.net$" ACAO=$0
+  SetEnvIfNoCase Origin "^http://localhost:5173$" ACAO=$0
+  SetEnvIfNoCase Origin "^http://127\.0\.0\.1:5173$" ACAO=$0
+
+  Header always set Vary "Origin"
+  Header always set Access-Control-Allow-Methods "GET, POST, DELETE, OPTIONS"
+  Header always set Access-Control-Allow-Headers "Content-Type, Authorization, X-Requested-With, Origin, Accept"
+  Header always set Access-Control-Max-Age "86400"
+
+  # Kirim ACAO hanya jika Origin masuk whitelist
+  Header always set Access-Control-Allow-Origin "%{ACAO}e" env=ACAO
+</IfModule>
+
+# --- Preflight OPTIONS -> 204 cepat (tetep kirim header di atas) ---
+<IfModule mod_rewrite.c>
+  RewriteCond %{REQUEST_METHOD} =OPTIONS
+  RewriteRule ^ - [R=204,L]
+</IfModule>
+
+# --- API routing (skip kalau file/folder ada) ---
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^api/verify$            api/verify.php           [L]
+RewriteRule ^api/signers$           api/signers.php          [L]
+RewriteRule ^api/create_signer$     api/create_signer.php    [L]
+RewriteRule ^api/update_signer$     api/update_signer.php    [L]
+RewriteRule ^api/delete_signer$     api/delete_signer.php    [L]
+
+RewriteRule ^api/documents$         api/documents.php        [L]
+RewriteRule ^api/delete_document$   api/delete_document.php  [L]
+RewriteRule ^api/get_documents$     api/get_documents.php    [L]
+RewriteRule ^api/view_document$     api/view_document.php    [L]
+RewriteRule ^api/update_document$   api/update_document.php  [L]
+RewriteRule ^api/login$             api/login.php            [L]
+RewriteRule ^api/get_signer$        api/get_signer.php       [L]
+
+# --- Serve uploads ---
+RewriteRule ^uploads/(.+)$ uploads/$1 [L]
+
+# --- Lindungi file sensitif (Apache 2.4+) ---
+<FilesMatch "\.(htaccess|htpasswd|ini|log|sh|sql)$">
+  Require all denied
+</FilesMatch>
+<Files "database.php">
+  Require all denied
+</Files>
+
+# --- MIME types ---
+<IfModule mod_mime.c>
+  AddType application/json .json
+  AddType image/jpeg .jpg .jpeg
+  AddType image/png .png
+  AddType application/pdf .pdf
+</IfModule>
+
+# --- Compression ---
+<IfModule mod_deflate.c>
+  AddOutputFilterByType DEFLATE text/plain text/html text/xml text/css application/xml application/xhtml+xml application/rss+xml application/javascript application/x-javascript application/json
+</IfModule>
