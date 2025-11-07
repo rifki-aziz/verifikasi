@@ -11,6 +11,19 @@ export interface Document {
 
   // daftar objek signer lengkap
   signers: Signer[];
+
+  // daftar file dokumen (multi-file)
+  files?: DocumentFile[];
+}
+
+// DocumentFile.ts
+export interface DocumentFile {
+  id: number;
+  document_id: number;
+  file_name: string;
+  file_path: string;
+  file_type?: string;
+  uploaded_at?: string;
 }
 
 // Signer.ts

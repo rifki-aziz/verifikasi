@@ -1,8 +1,9 @@
 import React, { useState } from "react";
-import { UserPlus, Upload, Save, X } from "lucide-react";
-import { Signer, Document } from "../../types";
+import { UserPlus, Upload, Save, X, Eye } from "lucide-react";
+import { Signer, Document, DocumentFile } from "../../types";
 import { SearchableDropdown } from "../SearchableDropdown";
-import { MAX_FILE_MB, ALLOWED_TYPES, humanSize } from "./helpers";
+import { MAX_FILE_MB, ALLOWED_TYPES, humanSize, getFileType } from "./helpers";
+import { DocumentViewer } from "./DocumentViewer";
 
 interface DocumentFormProps {
   allSigners: Signer[];
@@ -27,6 +28,9 @@ export const DocumentForm: React.FC<DocumentFormProps> = ({
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [dragOver, setDragOver] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [uploadedFiles, setUploadedFiles] = useState<DocumentFile[]>([]);
+  const [showViewer, setShowViewer] = useState(false);
+  const [lastUploadedDoc, setLastUploadedDoc] = useState<Document | null>(null);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -91,7 +95,14 @@ export const DocumentForm: React.FC<DocumentFormProps> = ({
       const result = await res.json();
 
       if (result.success && result.data) {
-        alert("Dokumen berhasil disimpan!");
+        const uploadedFilesData: DocumentFile[] = (result.data.files || []).map((f: any, idx: number) => ({
+          id: idx,
+          document_id: result.data.id,
+          file_name: f.file_name || f.stored_name,
+          file_path: f.file_path || f.stored_name,
+          file_type: getFileType(f.file_name || f.stored_name),
+        }));
+
         const newDoc: Document = {
           id: Number(result.data.id),
           nomor_dokumen: String(result.data.nomor_dokumen ?? formData.nomor_dokumen),
@@ -102,8 +113,19 @@ export const DocumentForm: React.FC<DocumentFormProps> = ({
           signer_names: selectedSigners.map((s: any) =>
             s.jabatan ? `${s.nama} (${s.jabatan})` : s.nama
           ),
+          files: uploadedFilesData,
         };
+
         setDocuments(prev => [newDoc, ...prev]);
+        setUploadedFiles(uploadedFilesData);
+        setLastUploadedDoc(newDoc);
+
+        // Simpan ke localStorage
+        const existingDocs = JSON.parse(localStorage.getItem('uploadedDocuments') || '[]');
+        existingDocs.unshift(newDoc);
+        localStorage.setItem('uploadedDocuments', JSON.stringify(existingDocs.slice(0, 50)));
+
+        alert(`Dokumen berhasil disimpan dengan ${uploadedFilesData.length} file!`);
         setFormData({ nomor_dokumen: "", judul: "" });
         setSelectedSigners([]);
         setSelectedFiles([]);
@@ -194,7 +216,7 @@ export const DocumentForm: React.FC<DocumentFormProps> = ({
               id="file-input"
               type="file"
               multiple
-              accept="image/*,application/pdf"
+              accept="image/*,application/pdf,.doc,.docx"
               onChange={e => {
                 if (e.target.files) handleFilesSelect(e.target.files);
               }}
@@ -208,7 +230,7 @@ export const DocumentForm: React.FC<DocumentFormProps> = ({
                 Klik atau drag & drop beberapa file di sini
               </p>
               <p className="text-white/70 text-sm">
-                Format: JPG, PNG, PDF (Maks. {MAX_FILE_MB}MB per file)
+                Format: JPG, PNG, PDF, DOCX (Maks. {MAX_FILE_MB}MB per file)
               </p>
             </div>
           </div>
@@ -248,6 +270,49 @@ export const DocumentForm: React.FC<DocumentFormProps> = ({
           </>}
         </button>
       </form>
+
+      {/* Preview Dokumen yang Baru Diupload */}
+      {uploadedFiles.length > 0 && lastUploadedDoc && (
+        <div className="mt-6 bg-white/5 backdrop-blur-sm rounded-xl p-4 border border-white/20">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-white font-semibold text-lg">Dokumen Berhasil Diupload</h3>
+            <button
+              onClick={() => setShowViewer(true)}
+              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-semibold transition"
+            >
+              <Eye className="w-4 h-4" />
+              Preview {uploadedFiles.length} File
+            </button>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+            {uploadedFiles.map((file, idx) => (
+              <div
+                key={idx}
+                className="bg-white/10 rounded-lg p-3 border border-white/10 hover:bg-white/20 transition cursor-pointer"
+                onClick={() => setShowViewer(true)}
+              >
+                <div className="text-2xl mb-2 text-center">
+                  {getFileType(file.file_name) === 'pdf' && '📄'}
+                  {getFileType(file.file_name) === 'image' && '🖼️'}
+                  {getFileType(file.file_name) === 'docx' && '📝'}
+                </div>
+                <p className="text-white text-xs text-center truncate">{file.file_name}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Document Viewer Modal */}
+      {showViewer && uploadedFiles.length > 0 && (
+        <DocumentViewer
+          files={uploadedFiles}
+          isOpen={showViewer}
+          onClose={() => setShowViewer(false)}
+          uploadsBase={API_BASE.replace(/\/api\/?$/i, '')}
+          documentTitle={lastUploadedDoc?.judul}
+        />
+      )}
     </div>
   );
 };

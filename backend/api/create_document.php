@@ -28,7 +28,7 @@ try {
 
     // --- Multi-file upload handling ---
     if (!empty($_FILES['files']) && is_array($_FILES['files']['name'])) {
-        $allowed_extensions = ['jpg', 'jpeg', 'png', 'pdf'];
+        $allowed_extensions = ['jpg', 'jpeg', 'png', 'pdf', 'doc', 'docx'];
 
         foreach ($_FILES['files']['name'] as $index => $original_name) {
             if ($_FILES['files']['error'][$index] !== UPLOAD_ERR_OK) continue;
@@ -37,7 +37,7 @@ try {
             $file_extension = strtolower($file_info['extension'] ?? '');
 
             if (!in_array($file_extension, $allowed_extensions)) {
-                throw new Exception('Only JPG, JPEG, PNG, and PDF files are allowed');
+                throw new Exception('Only JPG, JPEG, PNG, PDF, and DOCX files are allowed');
             }
 
             if ($_FILES['files']['size'][$index] > 10 * 1024 * 1024) {
@@ -52,10 +52,16 @@ try {
                 throw new Exception('Failed to upload file: ' . $original_name);
             }
 
+            // Detect MIME type
+            $finfo = finfo_open(FILEINFO_MIME_TYPE);
+            $mime_type = finfo_file($finfo, $upload_path);
+            finfo_close($finfo);
+
             $uploaded_files[] = [
                 'file_name' => $original_name,
                 'stored_name' => $new_name,
-                'file_path' => basename($new_name)
+                'file_path' => basename($new_name),
+                'file_type' => $mime_type
             ];
         }
     }

@@ -9,8 +9,9 @@ import {
   Pencil,
   Download,
 } from "lucide-react";
-import { Document } from "../../types";
+import { Document, DocumentFile } from "../../types";
 import { copyText } from "./helpers";
+import { DocumentViewer } from "./DocumentViewer";
 
 interface DocumentListProps {
   documents: Document[];
@@ -30,6 +31,9 @@ export const DocumentList: React.FC<DocumentListProps> = ({
   isLoading = false,
 }) => {
   const [search, setSearch] = useState("");
+  const [viewerFiles, setViewerFiles] = useState<DocumentFile[]>([]);
+  const [showViewer, setShowViewer] = useState(false);
+  const [viewerTitle, setViewerTitle] = useState("");
 
   const buildPublicResultURL = (nomor: string): string => {
     return `${window.location.origin}/result?nomor=${encodeURIComponent(nomor)}`;
@@ -118,7 +122,15 @@ export const DocumentList: React.FC<DocumentListProps> = ({
 
               <div className="flex gap-2 mt-3 flex-wrap justify-center">
                 <button
-                  onClick={() => onView(doc)}
+                  onClick={() => {
+                    if (doc.files && doc.files.length > 0) {
+                      setViewerFiles(doc.files);
+                      setViewerTitle(doc.judul);
+                      setShowViewer(true);
+                    } else {
+                      onView(doc);
+                    }
+                  }}
                   className="p-2 rounded bg-blue-600 hover:bg-blue-700 text-white"
                   title="Lihat"
                 >
@@ -169,6 +181,17 @@ export const DocumentList: React.FC<DocumentListProps> = ({
           );
         })}
       </div>
+
+      {/* Document Viewer */}
+      {showViewer && viewerFiles.length > 0 && (
+        <DocumentViewer
+          files={viewerFiles}
+          isOpen={showViewer}
+          onClose={() => setShowViewer(false)}
+          uploadsBase={API_BASE.replace(/\/api\/?$/i, '')}
+          documentTitle={viewerTitle}
+        />
+      )}
     </div>
   );
 };

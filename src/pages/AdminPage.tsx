@@ -17,6 +17,7 @@ import { DocumentModal } from "../components/admin/DocumentModal";
 import { DocumentEditModal } from "../components/admin/DocumentEditModal";
 import { AddSignerForm } from "../components/AddSignerForm";
 import { SignerList } from "../components/admin/SignerList";
+import { initMockData, getDocumentsFromLocalStorage } from "../utils/mockData";
 
 interface AdminPageProps {
   signers: Signer[];
@@ -69,6 +70,9 @@ const AdminPage: React.FC<AdminPageProps> = ({ signers, onBack }) => {
   useEffect(() => {
     const fetchDocuments = async () => {
       try {
+        initMockData();
+        const localDocs = getDocumentsFromLocalStorage();
+
         const res = await fetch(`${API_BASE}/get_documents.php`);
         const data = await res.json();
         if (data.success && Array.isArray(data.data)) {
@@ -76,10 +80,17 @@ const AdminPage: React.FC<AdminPageProps> = ({ signers, onBack }) => {
             ...doc,
             signers: mapSigners(doc.signers || []),
           }));
-          setDocuments(mappedDocs);
+          const combined = [...mappedDocs, ...localDocs.filter(
+            local => !mappedDocs.some(api => api.id === local.id)
+          )];
+          setDocuments(combined);
+        } else {
+          setDocuments(localDocs);
         }
       } catch (error) {
         console.error("Gagal load dokumen:", error);
+        const localDocs = getDocumentsFromLocalStorage();
+        setDocuments(localDocs);
       } finally {
         setIsLoadingDocuments(false);
       }
