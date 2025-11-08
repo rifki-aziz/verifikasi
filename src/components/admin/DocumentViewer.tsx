@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Swiper, SwiperSlide } from 'swiper/react';
 import { Navigation, Pagination, Zoom } from 'swiper/modules';
-import { X, Download, FileText, Image as ImageIcon, FileType, Edit, Trash2 } from 'lucide-react';
+import { X, Download, FileText, Image as ImageIcon, FileType, CreditCard as Edit, Trash2 } from 'lucide-react';
 import { DocumentFile, Document } from '../../types';
 import { getFileType } from './helpers';
 
