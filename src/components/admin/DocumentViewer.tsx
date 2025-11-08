@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { Swiper, SwiperSlide } from 'swiper/react';
 import { Navigation, Pagination, Zoom } from 'swiper/modules';
-import { X, Download, FileText, Image as ImageIcon, FileType } from 'lucide-react';
-import { DocumentFile } from '../../types';
+import { X, Download, FileText, Image as ImageIcon, FileType, Edit, Trash2 } from 'lucide-react';
+import { DocumentFile, Document } from '../../types';
 import { getFileType } from './helpers';
 
 import 'swiper/css';
@@ -16,6 +16,10 @@ interface DocumentViewerProps {
   onClose: () => void;
   uploadsBase: string;
   documentTitle?: string;
+  document?: Document;
+  onEdit?: (doc: Document) => void;
+  onDelete?: (docId: number) => void;
+  API_BASE?: string;
 }
 
 export const DocumentViewer: React.FC<DocumentViewerProps> = ({
@@ -24,18 +28,74 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
   onClose,
   uploadsBase,
   documentTitle,
+  document,
+  onEdit,
+  onDelete,
+  API_BASE,
 }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   if (!isOpen || files.length === 0) return null;
 
-  const handleDownload = (file: DocumentFile) => {
-    const link = document.createElement('a');
-    link.href = `${uploadsBase}/uploads/${file.file_path}`;
-    link.download = file.file_name;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  const handleDownload = async (file: DocumentFile) => {
+    try {
+      if (API_BASE) {
+        // Download via backend API
+        const response = await fetch(`${API_BASE}/download.php?file=${encodeURIComponent(file.file_path)}`);
+        if (!response.ok) throw new Error('Download failed');
+        
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = file.file_name;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+      } else {
+        // Direct download
+        const link = document.createElement('a');
+        link.href = `${uploadsBase}/uploads/${file.file_path}`;
+        link.download = file.file_name;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }
+    } catch (error) {
+      console.error('Download error:', error);
+      alert('Gagal mendownload file');
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!document || !onDelete || !API_BASE) return;
+    
+    if (!confirm(`Yakin ingin menghapus dokumen "${document.judul}"?`)) return;
+
+    setIsDeleting(true);
+    try {
+      const response = await fetch(`${API_BASE}/delete_document.php`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: document.id })
+      });
+
+      const result = await response.json();
+      if (result.success) {
+        onDelete(document.id);
+        onClose();
+        alert('Dokumen berhasil dihapus');
+      } else {
+        throw new Error(result.error || 'Gagal menghapus dokumen');
+      }
+    } catch (error) {
+      console.error('Delete error:', error);
+      alert('Gagal menghapus dokumen: ' + (error as Error).message);
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   const renderFilePreview = (file: DocumentFile) => {
@@ -139,14 +199,51 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
             <p className="text-sm text-gray-500">
               {files.length} dokumen ({currentIndex + 1} dari {files.length})
             </p>
+            {document && (
+              <p className="text-xs text-gray-400 mt-1">
+                Nomor: {document.nomor_dokumen} | Dibuat: {document.created_at}
+              </p>
+            )}
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 rounded-lg hover:bg-gray-100 transition"
-            title="Tutup"
-          >
-            <X className="w-6 h-6 text-gray-600" />
-          </button>
+          
+          <div className="flex items-center gap-2">
+            {/* Edit Button */}
+            {document && onEdit && (
+              <button
+                onClick={() => {
+                  onEdit(document);
+                  onClose();
+                }}
+                className="flex items-center gap-2 bg-yellow-600 hover:bg-yellow-700 text-white px-3 py-2 rounded-lg text-sm font-medium"
+                title="Edit Dokumen"
+              >
+                <Edit className="w-4 h-4" />
+                Edit
+              </button>
+            )}
+            
+            {/* Delete Button */}
+            {document && onDelete && API_BASE && (
+              <button
+                onClick={handleDelete}
+                disabled={isDeleting}
+                className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded-lg text-sm font-medium disabled:opacity-50"
+                title="Hapus Dokumen"
+              >
+                <Trash2 className="w-4 h-4" />
+                {isDeleting ? 'Menghapus...' : 'Hapus'}
+              </button>
+            )}
+            
+            {/* Close Button */}
+            <button
+              onClick={onClose}
+              className="p-2 rounded-lg hover:bg-gray-100 transition"
+              title="Tutup"
+            >
+              <X className="w-6 h-6 text-gray-600" />
+            </button>
+          </div>
         </div>
 
         {/* Content */}

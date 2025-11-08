@@ -117,8 +117,21 @@ const AdminPage: React.FC<AdminPageProps> = ({ signers, onBack }) => {
           : doc
       )
     );
+    setEditingDocument(null);
+    setActiveMenu("documents");
   };
 
+  // ====== Handle edit document ======
+  const handleEditDocument = (doc: Document) => {
+    setEditingDocument(doc);
+    setActiveMenu("upload");
+  };
+
+  // ====== Handle cancel edit ======
+  const handleCancelEdit = () => {
+    setEditingDocument(null);
+    setActiveMenu("documents");
+  };
   // ====== Sidebar Content ======
   const SidebarContent = () => (
     <>
@@ -285,6 +298,8 @@ const AdminPage: React.FC<AdminPageProps> = ({ signers, onBack }) => {
             onAddSigner={() => setIsAddSignerOpen(true)}
             selectedSigners={selectedSigners}
             setSelectedSigners={setSelectedSigners}
+            editingDocument={editingDocument}
+            onCancelEdit={handleCancelEdit}
           />
         </div>
 
@@ -300,10 +315,7 @@ const AdminPage: React.FC<AdminPageProps> = ({ signers, onBack }) => {
               setSelectedDocument(doc);
               setIsModalOpen(true);
             }}
-            onEdit={(doc) => {
-              setEditingDocument(doc);
-              setIsEditOpen(true);
-            }}
+            onEdit={handleEditDocument}
             API_BASE={API_BASE}
             isLoading={isLoadingDocuments}
           />

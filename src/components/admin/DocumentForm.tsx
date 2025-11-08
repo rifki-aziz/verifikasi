@@ -1,9 +1,10 @@
-import React, { useState } from "react";
-import { UserPlus, Upload, Save, X, Eye } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { UserPlus, Upload, Save, X, Eye, RefreshCw } from "lucide-react";
 import { Signer, Document, DocumentFile } from "../../types";
 import { SearchableDropdown } from "../SearchableDropdown";
 import { MAX_FILE_MB, ALLOWED_TYPES, humanSize, getFileType } from "./helpers";
 import { DocumentViewer } from "./DocumentViewer";
+import { addDocumentToLocalStorage } from "../../utils/mockData";
 
 interface DocumentFormProps {
   allSigners: Signer[];
@@ -14,6 +15,8 @@ interface DocumentFormProps {
   onAddSigner: () => void;
   selectedSigners: Signer[];
   setSelectedSigners: React.Dispatch<React.SetStateAction<Signer[]>>;
+  editingDocument?: Document | null;
+  onCancelEdit?: () => void;
 }
 
 export const DocumentForm: React.FC<DocumentFormProps> = ({
@@ -23,6 +26,8 @@ export const DocumentForm: React.FC<DocumentFormProps> = ({
   onAddSigner,
   selectedSigners,
   setSelectedSigners,
+  editingDocument,
+  onCancelEdit,
 }) => {
   const [formData, setFormData] = useState({ nomor_dokumen: "", judul: "" });
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
@@ -31,6 +36,24 @@ export const DocumentForm: React.FC<DocumentFormProps> = ({
   const [uploadedFiles, setUploadedFiles] = useState<DocumentFile[]>([]);
   const [showViewer, setShowViewer] = useState(false);
   const [lastUploadedDoc, setLastUploadedDoc] = useState<Document | null>(null);
+
+  // Reset form when editing document changes
+  useEffect(() => {
+    if (editingDocument) {
+      setFormData({
+        nomor_dokumen: editingDocument.nomor_dokumen,
+        judul: editingDocument.judul
+      });
+      setSelectedSigners(editingDocument.signers || []);
+      setSelectedFiles([]);
+      setUploadedFiles(editingDocument.files || []);
+    } else {
+      setFormData({ nomor_dokumen: "", judul: "" });
+      setSelectedSigners([]);
+      setSelectedFiles([]);
+      setUploadedFiles([]);
+    }
+  }, [editingDocument, setSelectedSigners]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -48,7 +71,7 @@ export const DocumentForm: React.FC<DocumentFormProps> = ({
     const validFiles: File[] = [];
     for (const file of files) {
       if (!ALLOWED_TYPES.includes(file.type)) {
-        alert(`${file.name} tidak valid. Hanya JPG/PNG/PDF yang diperbolehkan.`);
+        alert(`${file.name} tidak valid. Hanya JPG/PNG/PDF/DOCX yang diperbolehkan.`);
         continue;
       }
       if (file.size > MAX_FILE_MB * 1024 * 1024) {
@@ -84,13 +107,26 @@ export const DocumentForm: React.FC<DocumentFormProps> = ({
       const form = new FormData();
       form.append("nomor_dokumen", formData.nomor_dokumen.trim());
       form.append("judul", formData.judul.trim());
+      
+      // Add signers
       selectedSigners.forEach(s => form.append("signers[]", String(s.id)));
 
+      // Add files
       selectedFiles.forEach(file => {
         form.append("files[]", file);
       });
 
-      const res = await fetch(`${API_BASE}/documents.php`, { method: "POST", body: form });
+      // If editing, add document ID
+      if (editingDocument) {
+        form.append("id", String(editingDocument.id));
+      }
+
+      const endpoint = editingDocument ? 'update_document.php' : 'documents.php';
+      const res = await fetch(`${API_BASE}/${endpoint}`, { 
+        method: "POST", 
+        body: form 
+      });
+      
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const result = await res.json();
 
@@ -103,32 +139,44 @@ export const DocumentForm: React.FC<DocumentFormProps> = ({
           file_type: getFileType(f.file_name || f.stored_name),
         }));
 
-        const newDoc: Document = {
+        const docData: Document = {
           id: Number(result.data.id),
           nomor_dokumen: String(result.data.nomor_dokumen ?? formData.nomor_dokumen),
           judul: String(result.data.judul ?? formData.judul),
-          file_jpg: String(result.data.file_path ?? ""),
-          created_at: new Date().toISOString().split("T")[0],
+          file_jpg: String(result.data.file_jpg ?? uploadedFilesData[0]?.file_path ?? ""),
+          created_at: editingDocument?.created_at || new Date().toISOString().split("T")[0],
           signers: selectedSigners,
           signer_names: selectedSigners.map((s: any) =>
             s.jabatan ? `${s.nama} (${s.jabatan})` : s.nama
           ),
-          files: uploadedFilesData,
+          files: uploadedFilesData.length > 0 ? uploadedFilesData : (editingDocument?.files || []),
         };
 
-        setDocuments(prev => [newDoc, ...prev]);
-        setUploadedFiles(uploadedFilesData);
-        setLastUploadedDoc(newDoc);
+        if (editingDocument) {
+          // Update existing document
+          setDocuments(prev => prev.map(doc => 
+            doc.id === editingDocument.id ? docData : doc
+          ));
+          alert("Dokumen berhasil diperbarui!");
+          if (onCancelEdit) onCancelEdit();
+        } else {
+          // Add new document
+          setDocuments(prev => [docData, ...prev]);
+          setUploadedFiles(uploadedFilesData);
+          setLastUploadedDoc(docData);
+          
+          // Save to localStorage
+          addDocumentToLocalStorage(docData);
+          
+          alert(`Dokumen berhasil disimpan dengan ${uploadedFilesData.length} file!`);
+        }
 
-        // Simpan ke localStorage
-        const existingDocs = JSON.parse(localStorage.getItem('uploadedDocuments') || '[]');
-        existingDocs.unshift(newDoc);
-        localStorage.setItem('uploadedDocuments', JSON.stringify(existingDocs.slice(0, 50)));
-
-        alert(`Dokumen berhasil disimpan dengan ${uploadedFilesData.length} file!`);
-        setFormData({ nomor_dokumen: "", judul: "" });
-        setSelectedSigners([]);
-        setSelectedFiles([]);
+        // Reset form if not editing
+        if (!editingDocument) {
+          setFormData({ nomor_dokumen: "", judul: "" });
+          setSelectedSigners([]);
+          setSelectedFiles([]);
+        }
       } else {
         alert("Gagal menyimpan dokumen: " + (result.error ?? "Unknown error"));
       }
@@ -140,8 +188,33 @@ export const DocumentForm: React.FC<DocumentFormProps> = ({
     }
   };
 
+  const handleCancel = () => {
+    if (onCancelEdit) {
+      onCancelEdit();
+    }
+    setFormData({ nomor_dokumen: "", judul: "" });
+    setSelectedSigners([]);
+    setSelectedFiles([]);
+    setUploadedFiles([]);
+  };
+
   return (
     <div className="bg-white/10 backdrop-blur-md rounded-2xl p-8 shadow-2xl border border-white/20">
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-2xl font-bold text-white">
+          {editingDocument ? 'Edit Dokumen' : 'Upload Dokumen Baru'}
+        </h2>
+        {editingDocument && (
+          <button
+            onClick={handleCancel}
+            className="flex items-center gap-2 bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg"
+          >
+            <X className="w-4 h-4" />
+            Batal Edit
+          </button>
+        )}
+      </div>
+
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Nomor & Judul Dokumen */}
         <div>
@@ -196,7 +269,7 @@ export const DocumentForm: React.FC<DocumentFormProps> = ({
         {/* Upload Multiple Files */}
         <div>
           <label className="block text-white font-medium mb-2">
-            Upload Lampiran (Bisa lebih dari satu)
+            {editingDocument ? 'Upload File Baru (Opsional)' : 'Upload Lampiran (Bisa lebih dari satu)'}
           </label>
           <div
             className={`relative border-2 border-dashed rounded-lg p-8 text-center transition-all cursor-pointer ${
@@ -237,6 +310,7 @@ export const DocumentForm: React.FC<DocumentFormProps> = ({
 
           {selectedFiles.length > 0 && (
             <div className="mt-4 space-y-2">
+              <h4 className="text-white font-medium">File Baru:</h4>
               {selectedFiles.map((file, i) => (
                 <div
                   key={i}
@@ -256,23 +330,66 @@ export const DocumentForm: React.FC<DocumentFormProps> = ({
               ))}
             </div>
           )}
+
+          {/* Show existing files when editing */}
+          {editingDocument && uploadedFiles.length > 0 && (
+            <div className="mt-4 space-y-2">
+              <h4 className="text-white font-medium">File Saat Ini:</h4>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                {uploadedFiles.map((file, idx) => (
+                  <div
+                    key={idx}
+                    className="bg-white/10 rounded-lg p-3 border border-white/10 hover:bg-white/20 transition cursor-pointer"
+                    onClick={() => setShowViewer(true)}
+                  >
+                    <div className="text-2xl mb-2 text-center">
+                      {getFileType(file.file_name) === 'pdf' && '📄'}
+                      {getFileType(file.file_name) === 'image' && '🖼️'}
+                      {getFileType(file.file_name) === 'docx' && '📝'}
+                    </div>
+                    <p className="text-white text-xs text-center truncate">{file.file_name}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Submit */}
-        <button
-          type="submit"
-          disabled={isSaving}
-          className="w-full bg-red-700 hover:bg-red-800 text-white font-bold py-4 px-6 rounded-lg transition-all duration-200 flex items-center justify-center gap-3 text-lg"
-        >
-          {isSaving ? "Menyimpan..." : <>
-            <Save className="w-6 h-6" />
-            Simpan Surat
-          </>}
-        </button>
+        <div className="flex gap-4">
+          <button
+            type="submit"
+            disabled={isSaving}
+            className="flex-1 bg-red-700 hover:bg-red-800 text-white font-bold py-4 px-6 rounded-lg transition-all duration-200 flex items-center justify-center gap-3 text-lg disabled:opacity-50"
+          >
+            {isSaving ? (
+              <>
+                <RefreshCw className="w-6 h-6 animate-spin" />
+                {editingDocument ? 'Memperbarui...' : 'Menyimpan...'}
+              </>
+            ) : (
+              <>
+                <Save className="w-6 h-6" />
+                {editingDocument ? 'Perbarui Surat' : 'Simpan Surat'}
+              </>
+            )}
+          </button>
+          
+          {editingDocument && (
+            <button
+              type="button"
+              onClick={handleCancel}
+              className="bg-gray-600 hover:bg-gray-700 text-white font-bold py-4 px-6 rounded-lg transition-all duration-200 flex items-center justify-center gap-3"
+            >
+              <X className="w-6 h-6" />
+              Batal
+            </button>
+          )}
+        </div>
       </form>
 
       {/* Preview Dokumen yang Baru Diupload */}
-      {uploadedFiles.length > 0 && lastUploadedDoc && (
+      {!editingDocument && uploadedFiles.length > 0 && lastUploadedDoc && (
         <div className="mt-6 bg-white/5 backdrop-blur-sm rounded-xl p-4 border border-white/20">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-white font-semibold text-lg">Dokumen Berhasil Diupload</h3>
@@ -310,7 +427,9 @@ export const DocumentForm: React.FC<DocumentFormProps> = ({
           isOpen={showViewer}
           onClose={() => setShowViewer(false)}
           uploadsBase={API_BASE.replace(/\/api\/?$/i, '')}
-          documentTitle={lastUploadedDoc?.judul}
+          documentTitle={editingDocument?.judul || lastUploadedDoc?.judul}
+          document={editingDocument || lastUploadedDoc || undefined}
+          API_BASE={API_BASE}
         />
       )}
     </div>
