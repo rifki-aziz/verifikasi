@@ -7,6 +7,8 @@ import AdminPage from "./pages/AdminPage";
 import { AdminLoginPopup } from './components/AdminLoginPopup';
 import { Document, Signer } from './types';
 import { SignerProfile } from './pages/SignerProfile'; // ✅ tambahin ini
+import { verifyDocument, getSigners, getDocuments } from './services/api';
+import { initMockData, getDocumentsFromLocalStorage } from './utils/mockData';
 
 // ---------- Helpers ----------
 function useQueryParam(name: string) {
@@ -19,16 +21,32 @@ function useQueryParam(name: string) {
 function ResultRoute({ documents }: { documents: Document[] }) {
   const navigate = useNavigate();
   const nomor = useQueryParam('nomor') || '';
+  const [document, setDocument] = useState<Document | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const found = documents.find(
-    (d) => d.nomor_dokumen?.toLowerCase?.() === nomor.toLowerCase()
-  ) || null;
+  useEffect(() => {
+    if (nomor) {
+      setLoading(true);
+      verifyDocument(nomor).then(doc => {
+        setDocument(doc);
+        setLoading(false);
+      });
+    }
+  }, [nomor]);
 
   function handleBack() {
     navigate('/');
   }
 
-  return <ResultPage document={found} onBack={handleBack} />;
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-400 via-blue-500 to-indigo-600 flex items-center justify-center">
+        <div className="text-white text-xl">Memverifikasi dokumen...</div>
+      </div>
+    );
+  }
+
+  return <ResultPage document={document} onBack={handleBack} />;
 }
 
 function AppInner() {
@@ -62,19 +80,28 @@ function AppInner() {
   useEffect(() => {
     (async () => {
       try {
-        const [docRes, signerRes] = await Promise.all([
-          fetch(`${API_BASE}/get_documents.php`),
-          fetch(`${API_BASE}/signers.php`),
+        // Initialize mock data first
+        initMockData();
+        
+        // Try to get data from API, fallback to localStorage/mock
+        const [apiDocs, apiSigners] = await Promise.all([
+          getDocuments(),
+          getSigners(),
         ]);
-
-        const docJson = await docRes.json().catch(() => ({}));
-        const signerJson = await signerRes.json().catch(() => ({}));
-
-        setDocuments(Array.isArray(docJson?.data) ? docJson.data : []);
-        setSigners(Array.isArray(signerJson?.data) ? signerJson.data : []);
+        
+        // Combine API data with localStorage data
+        const localDocs = getDocumentsFromLocalStorage();
+        const combinedDocs = [...apiDocs, ...localDocs.filter(
+          local => !apiDocs.some(api => api.id === local.id)
+        )];
+        
+        setDocuments(combinedDocs);
+        setSigners(apiSigners);
       } catch (e) {
         console.error('Gagal memuat data:', e);
-        setDocuments([]);
+        // Fallback to mock data
+        const localDocs = getDocumentsFromLocalStorage();
+        setDocuments(localDocs);
         setSigners([]);
       } finally {
         setIsLoading(false);
@@ -140,7 +167,6 @@ function AppInner() {
 
         <Route path="/result" element={<ResultRoute documents={documents} />} />
 
-        {/* ✅ Route tambahan untuk profil penandatangan */}
         <Route path="/signer/:id" element={<SignerProfile />} />
         <Route path="/signer/by-name/:name" element={<SignerProfile />} />
       </Routes>
