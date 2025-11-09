@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { CheckCircle, XCircle, Eye, ArrowLeft, X, Link as LinkIcon } from 'lucide-react';
 import { Document, Signer } from '../types';
-import Logo from '../asset/logo/logo.png';
+import Logo from '/logo2.svg';
 
 interface ResultPageProps {
   document: Document | null;

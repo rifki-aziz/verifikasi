@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search } from 'lucide-react';
-import Logo from '../asset/logo/logo.png';
+import Logo from '/logo2.svg';
 import { AdminLoginPopup } from './AdminLoginPopup';
 
 interface VerificationPageProps {
